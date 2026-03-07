@@ -1,67 +1,301 @@
 #!/bin/bash
 
-set -e
+BASE_DIR="/opt"
 
-INSTANCE=$1
+function pause(){
+read -p "Presione ENTER para continuar..."
+}
 
-if [ -z "$INSTANCE" ]; then
-  echo "Uso:"
-  echo "install_odoo nombre_instancia"
-  exit 1
-fi
+function list_instances(){
+echo ""
+echo "Instancias Odoo instaladas:"
+echo ""
 
-BASE_DIR="/opt/odoo-$INSTANCE"
-BACKUP_DIR="$BASE_DIR/backups"
+ls -d /opt/odoo-* 2>/dev/null | sed 's|/opt/odoo-||'
 
-echo "================================="
-echo " Instalando Odoo instancia: $INSTANCE"
-echo "================================="
+echo ""
+}
 
-apt update -y
+function port_available(){
 
-echo "Verificando Docker..."
-
-if command -v docker >/dev/null 2>&1
-then
-    echo "Docker ya instalado"
-else
-    echo "Instalando Docker..."
-
-    apt install -y ca-certificates curl gnupg
-
-    install -m 0755 -d /etc/apt/keyrings
-
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-    | tee /etc/apt/keyrings/docker.asc > /dev/null
-
-    chmod a+r /etc/apt/keyrings/docker.asc
-
-    echo \
-    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
-    $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
-    | tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-    apt update -y
-
-    apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
-    systemctl enable docker
-    systemctl start docker
-fi
-
-echo "Calculando puertos libres..."
-
-BASE_PORT=8070
-PORT=$BASE_PORT
+PORT=8070
 
 while ss -tuln | grep -q ":$PORT "; do
-    PORT=$((PORT+1))
+PORT=$((PORT+1))
 done
 
-LONGPOLL=$((PORT+1))
-NGINX_PORT=$((PORT+10))
+echo $PORT
 
-echo "Puertos asignados:"
+}
+
+function create_instance(){
+
+echo ""
+read -p "Nombre de la nueva instancia: " NAME
+
+DIR="$BASE_DIR/odoo-$NAME"
+
+if [ -d "$DIR" ]; then
+echo ""
+echo "ERROR: ya existe una instancia con ese nombre"
+pause
+return
+fi
+
+PORT=$(port_available)
+LONGPOLL=$((PORT+1))
+NGINX=$((PORT+10))
+
+echo ""
+echo "Creando instancia $NAME"
+echo "Puerto Odoo: $PORT"
+echo "Puerto Web: $NGINX"
+
+mkdir -p $DIR/{addons/{desarrollado,enterprise,terceros},config,nginx,backups}
+
+cd $DIR
+
+cat > docker-compose.yml <<EOF
+version: "3.9"
+
+services:
+
+  db:
+    image: postgres:16
+    container_name: ${NAME}_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: odoo
+      POSTGRES_PASSWORD: odoo
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  odoo:
+    image: odoo:18
+    container_name: ${NAME}_odoo
+    restart: always
+    depends_on:
+      - db
+    ports:
+      - "$PORT:8069"
+      - "$LONGPOLL:8072"
+    volumes:
+      - odoo_data:/var/lib/odoo
+      - ./addons/desarrollado:/mnt/desarrollado
+      - ./addons/enterprise:/mnt/enterprise
+      - ./addons/terceros:/mnt/terceros
+      - ./config/odoo.conf:/etc/odoo/odoo.conf
+
+  nginx:
+    image: nginx:latest
+    container_name: ${NAME}_nginx
+    restart: always
+    depends_on:
+      - odoo
+    ports:
+      - "$NGINX:80"
+    volumes:
+      - ./nginx/odoo.conf:/etc/nginx/conf.d/default.conf
+
+volumes:
+  postgres_data:
+  odoo_data
+EOF
+
+cat > config/odoo.conf <<EOF
+[options]
+
+db_host = db
+db_port = 5432
+db_user = odoo
+db_password = odoo
+
+addons_path = /mnt/desarrollado,/mnt/enterprise,/mnt/terceros,/usr/lib/python3/dist-packages/odoo/addons
+
+admin_passwd = admin
+
+proxy_mode = True
+EOF
+
+cat > nginx/odoo.conf <<EOF
+upstream odoo {
+server odoo:8069;
+}
+
+server {
+listen 80;
+
+location / {
+proxy_pass http://odoo;
+}
+
+location /longpolling {
+proxy_pass http://odoo:8072;
+}
+}
+EOF
+
+docker compose up -d
+
+IP=$(curl -s ifconfig.me || hostname -I | awk '{print $1}')
+
+echo ""
+echo "Instancia creada"
+echo "Acceso:"
+echo "http://$IP:$NGINX"
+
+pause
+
+}
+
+function delete_instance(){
+
+echo ""
+echo "Seleccione instancia a borrar:"
+echo ""
+
+select NAME in $(ls -d /opt/odoo-* 2>/dev/null | sed 's|/opt/odoo-||'); do
+
+if [ -z "$NAME" ]; then
+echo "Opción inválida"
+return
+fi
+
+DIR="/opt/odoo-$NAME"
+
+echo ""
+read -p "CONFIRMAR borrar $NAME (si/no): " CONF
+
+if [ "$CONF" != "si" ]; then
+return
+fi
+
+cd $DIR
+
+docker compose down -v
+
+cd /opt
+
+rm -rf $DIR
+
+echo ""
+echo "Instancia eliminada"
+
+pause
+
+break
+
+done
+
+}
+
+function replace_instance(){
+
+echo ""
+echo "Seleccione instancia a reemplazar:"
+echo ""
+
+select NAME in $(ls -d /opt/odoo-* 2>/dev/null | sed 's|/opt/odoo-||'); do
+
+DIR="/opt/odoo-$NAME"
+
+cd $DIR
+
+docker compose down
+
+docker compose pull
+
+docker compose up -d
+
+echo ""
+echo "Instancia actualizada"
+
+pause
+
+break
+
+done
+
+}
+
+function start_instance(){
+
+select NAME in $(ls -d /opt/odoo-* 2>/dev/null | sed 's|/opt/odoo-||'); do
+
+cd /opt/odoo-$NAME
+
+docker compose up -d
+
+pause
+break
+
+done
+
+}
+
+function stop_instance(){
+
+select NAME in $(ls -d /opt/odoo-* 2>/dev/null | sed 's|/opt/odoo-||'); do
+
+cd /opt/odoo-$NAME
+
+docker compose down
+
+pause
+break
+
+done
+
+}
+
+function logs_instance(){
+
+select NAME in $(ls -d /opt/odoo-* 2>/dev/null | sed 's|/opt/odoo-||'); do
+
+docker logs -f ${NAME}_odoo
+
+break
+
+done
+
+}
+
+while true; do
+
+clear
+
+echo "================================="
+echo "   ODOO SERVER MANAGER"
+echo "================================="
+echo ""
+echo "1) Listar instancias"
+echo "2) Crear nueva instancia"
+echo "3) Reemplazar / actualizar instancia"
+echo "4) Borrar instancia"
+echo "5) Iniciar instancia"
+echo "6) Detener instancia"
+echo "7) Ver logs"
+echo "0) Salir"
+echo ""
+
+read -p "Seleccione opción: " OPTION
+
+case $OPTION in
+
+1) list_instances ;;
+2) create_instance ;;
+3) replace_instance ;;
+4) delete_instance ;;
+5) start_instance ;;
+6) stop_instance ;;
+7) logs_instance ;;
+0) exit ;;
+*) echo "Opción inválida"; pause ;;
+
+esac
+
+doneecho "Puertos asignados:"
 echo "Odoo: $PORT"
 echo "Longpoll: $LONGPOLL"
 echo "Nginx: $NGINX_PORT"
