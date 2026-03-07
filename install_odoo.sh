@@ -60,9 +60,10 @@ chmod +x /usr/local/bin/odoo-manager
 
 echo ""
 echo "================================="
-echo " INSTALACIÓN COMPLETA.."
+echo " INSTALACIÓN COMPLETA"
 echo "================================="
 echo ""
-
-# Ejecutar menú automáticamente
-/usr/local/bin/odoo-manager
+echo "Para administrar Odoo ejecuta:"
+echo ""
+echo "   odoo-manager"
+echo ""
