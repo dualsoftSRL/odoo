@@ -6,7 +6,6 @@ echo "================================="
 echo " ODOO SERVER INSTALLER"
 echo "================================="
 
-echo "Actualizando sistema..."
 apt update -y
 
 echo "Verificando Docker..."
@@ -50,18 +49,23 @@ docker run -d \
 containrrr/watchtower \
 --cleanup --interval 86400
 
-echo "Watchtower instalado"
-
-else
-
-echo "Watchtower ya existe"
-
 fi
 
 echo "Instalando Odoo Manager..."
 
 curl -fsSL https://raw.githubusercontent.com/dualsoftSRL/odoo/main/odoo-manager.sh \
 -o /usr/local/bin/odoo-manager
+
+chmod +x /usr/local/bin/odoo-manager
+
+echo ""
+echo "================================="
+echo " INSTALACIÓN COMPLETA"
+echo "================================="
+echo ""
+
+# Ejecuta automáticamente el menú
+odoo-manager-o /usr/local/bin/odoo-manager
 
 chmod +x /usr/local/bin/odoo-manager
 
