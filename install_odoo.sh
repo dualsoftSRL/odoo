@@ -1,67 +1,79 @@
 #!/bin/bash
 
-BASE_DIR="/opt"
+set -e
 
-function pause(){
-read -p "Presione ENTER para continuar..."
-}
+echo "================================="
+echo " ODOO SERVER INSTALLER"
+echo "================================="
 
-function list_instances(){
-echo ""
-echo "Instancias Odoo instaladas:"
-echo ""
+echo "Actualizando sistema..."
+apt update -y
 
-ls -d /opt/odoo-* 2>/dev/null | sed 's|/opt/odoo-||'
+echo "Verificando Docker..."
 
-echo ""
-}
+if command -v docker >/dev/null 2>&1
+then
+    echo "Docker ya instalado"
+else
+    echo "Instalando Docker..."
 
-function port_available(){
+    apt install -y ca-certificates curl gnupg
 
-PORT=8070
+    install -m 0755 -d /etc/apt/keyrings
 
-while ss -tuln | grep -q ":$PORT "; do
-PORT=$((PORT+1))
-done
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+    | tee /etc/apt/keyrings/docker.asc > /dev/null
 
-echo $PORT
+    chmod a+r /etc/apt/keyrings/docker.asc
 
-}
+    echo \
+    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+    $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+    | tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-function create_instance(){
+    apt update -y
 
-echo ""
-read -p "Nombre de la nueva instancia: " NAME
+    apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
-DIR="$BASE_DIR/odoo-$NAME"
-
-if [ -d "$DIR" ]; then
-echo ""
-echo "ERROR: ya existe una instancia con ese nombre"
-pause
-return
+    systemctl enable docker
+    systemctl start docker
 fi
 
-PORT=$(port_available)
-LONGPOLL=$((PORT+1))
-NGINX=$((PORT+10))
+echo "Verificando Watchtower..."
+
+if ! docker ps -a | grep -q watchtower; then
+
+docker run -d \
+--name watchtower \
+--restart always \
+-v /var/run/docker.sock:/var/run/docker.sock \
+containrrr/watchtower \
+--cleanup --interval 86400
+
+echo "Watchtower instalado"
+
+else
+
+echo "Watchtower ya existe"
+
+fi
+
+echo "Instalando Odoo Manager..."
+
+curl -fsSL https://raw.githubusercontent.com/dualsoftSRL/odoo/main/odoo-manager.sh \
+-o /usr/local/bin/odoo-manager
+
+chmod +x /usr/local/bin/odoo-manager
 
 echo ""
-echo "Creando instancia $NAME"
-echo "Puerto Odoo: $PORT"
-echo "Puerto Web: $NGINX"
-
-mkdir -p $DIR/{addons/{desarrollado,enterprise,terceros},config,nginx,backups}
-
-cd $DIR
-
-cat > docker-compose.yml <<EOF
-version: "3.9"
-
-services:
-
-  db:
-    image: postgres:16
+echo "================================="
+echo " INSTALACIÓN COMPLETA"
+echo "================================="
+echo ""
+echo "Ahora puedes ejecutar:"
+echo ""
+echo "odoo-manager"
+echo ""    image: postgres:16
     container_name: ${NAME}_postgres
     restart: always
     environment:
