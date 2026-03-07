@@ -631,7 +631,7 @@ docker compose up -d
 
 
 echo "--------------------------------------"
-echo "ODOO INSTALADO"
+echo "ODOO INSTALADO.."
 echo "--------------------------------------"
 
 echo ""
