@@ -3,11 +3,15 @@
 BASE_DIR="/opt"
 
 pause(){
-read -p "Presione ENTER para continuar..."
+read -p "Presione ENTER para continuar..." </dev/tty
 }
 
 get_ip(){
-curl -s ifconfig.me || hostname -I | awk '{print $1}'
+IP=$(curl -s ifconfig.me)
+if [ -z "$IP" ]; then
+IP=$(hostname -I | awk '{print $1}')
+fi
+echo $IP
 }
 
 list_instances(){
@@ -24,7 +28,7 @@ for DIR in /opt/odoo-*; do
 
 NAME=$(basename "$DIR" | sed 's/odoo-//')
 
-PORT=$(grep '"[0-9]*:8069"' $DIR/docker-compose.yml | head -1 | sed 's/"//g' | cut -d: -f1)
+PORT=$(grep '"[0-9]*:8069"' $DIR/docker-compose.yml 2>/dev/null | head -1 | sed 's/"//g' | cut -d: -f1)
 
 echo "$NAME  →  http://$IP:$PORT"
 
@@ -50,11 +54,12 @@ echo $PORT
 create_instance(){
 
 echo ""
-read -p "Nombre de la nueva instancia: " NAME
+read -p "Nombre de la nueva instancia: " NAME </dev/tty
 
 DIR="$BASE_DIR/odoo-$NAME"
 
 if [ -d "$DIR" ]; then
+echo ""
 echo "ERROR: ya existe una instancia con ese nombre"
 pause
 return
@@ -98,7 +103,6 @@ services:
       - ./addons/desarrollado:/mnt/desarrollado
       - ./addons/enterprise:/mnt/enterprise
       - ./addons/terceros:/mnt/terceros
-      - ./config/odoo.conf:/etc/odoo/odoo.conf
 
   nginx:
     image: nginx:latest
@@ -109,7 +113,7 @@ services:
     ports:
       - "$NGINX:80"
     volumes:
-      - ./nginx/odoo.conf:/etc/nginx/conf.d/default.conf
+      - ./nginx:/etc/nginx/conf.d
 
 volumes:
   postgres_data:
@@ -121,9 +125,11 @@ docker compose up -d
 IP=$(get_ip)
 
 echo ""
-echo "Instancia creada"
+echo "Instancia creada correctamente"
+echo ""
 echo "Acceso:"
-echo "http://$IP:$NGINX"
+echo "http://$IP:$PORT"
+echo ""
 
 pause
 
@@ -139,7 +145,12 @@ select NAME in $(ls -d /opt/odoo-* 2>/dev/null | sed 's|/opt/odoo-||'); do
 
 DIR="/opt/odoo-$NAME"
 
-read -p "CONFIRMAR borrar $NAME (si/no): " CONF
+if [ -z "$NAME" ]; then
+echo "Opción inválida"
+return
+fi
+
+read -p "CONFIRMAR borrar $NAME (si/no): " CONF </dev/tty
 
 if [ "$CONF" != "si" ]; then
 return
@@ -153,7 +164,9 @@ cd /opt
 
 rm -rf $DIR
 
+echo ""
 echo "Instancia eliminada"
+echo ""
 
 pause
 break
@@ -167,7 +180,7 @@ while true; do
 clear
 
 echo "================================="
-echo "      ODOO SERVER MANAGER.."
+echo "      ODOO SERVER MANAGER"
 echo "================================="
 echo ""
 echo "1) Listar instancias"
@@ -176,15 +189,31 @@ echo "3) Borrar instancia"
 echo "0) Salir"
 echo ""
 
-read -p "Seleccione opción: " OPTION
+read -p "Seleccione opción: " OPTION </dev/tty
 
-case $OPTION in
+case "$OPTION" in
 
-1) list_instances ;;
-2) create_instance ;;
-3) delete_instance ;;
-0) exit ;;
-*) echo "Opción inválida"; pause ;;
+1)
+list_instances
+;;
+
+2)
+create_instance
+;;
+
+3)
+delete_instance
+;;
+
+0)
+exit
+;;
+
+*)
+echo ""
+echo "Opción inválida"
+sleep 1
+;;
 
 esac
 
