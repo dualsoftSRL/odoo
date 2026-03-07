@@ -4,15 +4,62 @@ set -e
 
 ODOO_DIR="/opt/odoo"
 
-echo "Instalando Docker..."
+echo "--------------------------------------"
+echo "ACTUALIZANDO SISTEMA"
+echo "--------------------------------------"
 
 apt update -y
-apt install -y docker.io docker-compose-plugin
 
-systemctl enable docker
-systemctl start docker
+echo "--------------------------------------"
+echo "VERIFICANDO DOCKER"
+echo "--------------------------------------"
 
-echo "Creando estructura de carpetas..."
+if command -v docker >/dev/null 2>&1
+then
+    echo "Docker ya está instalado"
+else
+    echo "Instalando Docker..."
+
+    apt install -y ca-certificates curl gnupg
+
+    install -m 0755 -d /etc/apt/keyrings
+
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+    | tee /etc/apt/keyrings/docker.asc > /dev/null
+
+    chmod a+r /etc/apt/keyrings/docker.asc
+
+    echo \
+    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+    $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+    | tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+    apt update -y
+
+    apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+    systemctl enable docker
+    systemctl start docker
+
+fi
+
+
+echo "--------------------------------------"
+echo "VERIFICANDO DOCKER COMPOSE"
+echo "--------------------------------------"
+
+if docker compose version >/dev/null 2>&1
+then
+    echo "Docker Compose OK"
+else
+    echo "Docker Compose no disponible"
+    exit 1
+fi
+
+
+echo "--------------------------------------"
+echo "CREANDO ESTRUCTURA ODOO"
+echo "--------------------------------------"
 
 mkdir -p $ODOO_DIR
 cd $ODOO_DIR
@@ -23,7 +70,10 @@ mkdir -p addons/terceros
 mkdir -p config
 mkdir -p nginx
 
-echo "Creando docker-compose.yml..."
+
+echo "--------------------------------------"
+echo "CREANDO docker-compose.yml"
+echo "--------------------------------------"
 
 cat > docker-compose.yml << 'EOF'
 version: "3.9"
@@ -36,8 +86,8 @@ services:
     restart: always
     environment:
       POSTGRES_DB: postgres
-      POSTGRES_USER: dualsoft
-      POSTGRES_PASSWORD: t2jk0rh1A
+      POSTGRES_USER: odoo
+      POSTGRES_PASSWORD: odoo
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -52,8 +102,8 @@ services:
       - "8076:8072"
     environment:
       HOST: db
-      USER: dualsoft
-      PASSWORD: t2jk0rh1A
+      USER: odoo
+      PASSWORD: odoo
     volumes:
       - odoo_data:/var/lib/odoo
       - ./addons/desarrollado:/mnt/desarrollado
@@ -77,15 +127,18 @@ volumes:
   odoo_data:
 EOF
 
-echo "Creando archivo odoo.conf..."
+
+echo "--------------------------------------"
+echo "CREANDO odoo.conf"
+echo "--------------------------------------"
 
 cat > config/odoo.conf << 'EOF'
 [options]
 
 db_host = db
 db_port = 5432
-db_user = dualsoft
-db_password = t2jk0rh1A
+db_user = odoo
+db_password = odoo
 
 addons_path = /mnt/desarrollado,/mnt/enterprise,/mnt/terceros,/usr/lib/python3/dist-packages/odoo/addons
 
@@ -94,7 +147,10 @@ admin_passwd = admin
 proxy_mode = True
 EOF
 
-echo "Creando configuración nginx..."
+
+echo "--------------------------------------"
+echo "CREANDO CONFIG NGINX"
+echo "--------------------------------------"
 
 cat > nginx/odoo.conf << 'EOF'
 upstream odoo {
@@ -136,13 +192,18 @@ server {
 }
 EOF
 
-echo "Levantando contenedores..."
+
+echo "--------------------------------------"
+echo "INICIANDO ODOO"
+echo "--------------------------------------"
 
 docker compose up -d
 
-echo ""
-echo "======================================"
+
+echo "--------------------------------------"
 echo "ODOO INSTALADO"
+echo "--------------------------------------"
+
 echo ""
 echo "URL:"
 echo "http://IP_DEL_SERVIDOR:8085"
@@ -152,4 +213,4 @@ echo "admin"
 echo ""
 echo "Directorio:"
 echo "$ODOO_DIR"
-echo "======================================"
+echo ""
