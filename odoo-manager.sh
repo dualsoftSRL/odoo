@@ -7,11 +7,15 @@ read -p "Presione ENTER para continuar..." </dev/tty
 }
 
 get_ip(){
-IP=$(curl -s ifconfig.me)
+
+IP=$(curl -4 -s ifconfig.me)
+
 if [ -z "$IP" ]; then
-IP=$(hostname -I | awk '{print $1}')
+IP=$(hostname -I | tr ' ' '\n' | grep -E '^[0-9]+\.' | head -1)
 fi
+
 echo $IP
+
 }
 
 list_instances(){
