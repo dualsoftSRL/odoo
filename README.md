@@ -1,0 +1,2 @@
+# odoo
+odoo script dualsoft
