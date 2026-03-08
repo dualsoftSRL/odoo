@@ -6,6 +6,33 @@ echo "================================="
 echo " ODOO SERVER INSTALLER"
 echo "================================="
 
+OS=$(uname)
+
+install_manager() {
+
+echo "Instalando Odoo Manager..."
+
+curl -fsSL https://raw.githubusercontent.com/dualsoftSRL/odoo/main/odoo-manager.sh \
+-o /usr/local/bin/odoo-manager
+
+chmod +x /usr/local/bin/odoo-manager
+
+echo ""
+echo "Odoo Manager instalado"
+echo ""
+echo "Ejecute:"
+echo ""
+echo "odoo-manager"
+echo ""
+
+}
+
+install_linux() {
+
+echo "Sistema detectado: Linux"
+
+echo "Actualizando repositorios..."
+
 apt update -y
 
 echo "Verificando Docker..."
@@ -14,28 +41,30 @@ if command -v docker >/dev/null 2>&1
 then
     echo "Docker ya instalado"
 else
-    echo "Instalando Docker..."
 
-    apt install -y ca-certificates curl gnupg
+echo "Instalando Docker..."
 
-    install -m 0755 -d /etc/apt/keyrings
+apt install -y ca-certificates curl gnupg
 
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-    | tee /etc/apt/keyrings/docker.asc > /dev/null
+install -m 0755 -d /etc/apt/keyrings
 
-    chmod a+r /etc/apt/keyrings/docker.asc
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+| tee /etc/apt/keyrings/docker.asc > /dev/null
 
-    echo \
-    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
-    $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
-    | tee /etc/apt/sources.list.d/docker.list > /dev/null
+chmod a+r /etc/apt/keyrings/docker.asc
 
-    apt update -y
+echo \
+"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+$(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+| tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-    apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+apt update -y
 
-    systemctl enable docker
-    systemctl start docker
+apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+systemctl enable docker
+systemctl start docker
+
 fi
 
 echo "Verificando Watchtower..."
@@ -49,21 +78,65 @@ docker run -d \
 containrrr/watchtower \
 --cleanup --interval 86400
 
+echo "Watchtower instalado"
+
+else
+
+echo "Watchtower ya existe"
+
 fi
 
-echo "Instalando Odoo Manager..."
+install_manager
 
-curl -fsSL https://raw.githubusercontent.com/dualsoftSRL/odoo/main/odoo-manager.sh \
--o /usr/local/bin/odoo-manager
+}
 
-chmod +x /usr/local/bin/odoo-manager
+install_mac() {
+
+echo "Sistema detectado: macOS"
+
+if ! command -v docker >/dev/null 2>&1
+then
+
+echo ""
+echo "Docker no está instalado."
+echo ""
+echo "Instale Docker Desktop primero:"
+echo ""
+echo "https://www.docker.com/products/docker-desktop/"
+echo ""
+exit 1
+
+fi
+
+echo "Docker encontrado"
+
+install_manager
+
+}
+
+# Detectar sistema
+
+if [ "$OS" = "Linux" ]; then
+
+install_linux
+
+elif [ "$OS" = "Darwin" ]; then
+
+install_mac
+
+else
+
+echo "Sistema no soportado: $OS"
+exit 1
+
+fi
 
 echo ""
 echo "================================="
 echo " INSTALACIÓN COMPLETA"
 echo "================================="
 echo ""
-echo "Para administrar Odoo ejecuta:"
+echo "Para iniciar el gestor:"
 echo ""
-echo "   odoo-manager"
+echo "odoo-manager"
 echo ""
