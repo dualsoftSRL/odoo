@@ -142,31 +142,40 @@ pause
 delete_instance(){
 
 echo ""
-echo "Seleccione instancia a borrar:"
+echo "Instancias disponibles para borrar:"
 echo ""
 
-select NAME in $(ls -d /opt/odoo-* 2>/dev/null | sed 's|/opt/odoo-||'); do
+INSTANCES=$(docker ps --format "{{.Names}}" | grep -E "_odoo|_app")
 
-DIR="/opt/odoo-$NAME"
+select CONTAINER in $INSTANCES; do
 
-if [ -z "$NAME" ]; then
+if [ -z "$CONTAINER" ]; then
 echo "Opción inválida"
 return
 fi
 
-read -p "CONFIRMAR borrar $NAME (si/no): " CONF </dev/tty
+NAME=$(echo $CONTAINER | sed 's/_odoo//g' | sed 's/_app//g')
+
+read -p "CONFIRMAR borrar la instancia '$NAME' (si/no): " CONF </dev/tty
 
 if [ "$CONF" != "si" ]; then
+echo "Cancelado"
+pause
 return
 fi
 
-cd $DIR
+echo ""
+echo "Deteniendo contenedores..."
 
-docker compose down -v
+docker stop ${NAME}_odoo ${NAME}_app ${NAME}_nginx ${NAME}_postgres 2>/dev/null
+docker rm ${NAME}_odoo ${NAME}_app ${NAME}_nginx ${NAME}_postgres 2>/dev/null
 
-cd /opt
+echo ""
 
-rm -rf $DIR
+if [ -d "/opt/odoo-$NAME" ]; then
+rm -rf /opt/odoo-$NAME
+echo "Carpeta eliminada /opt/odoo-$NAME"
+fi
 
 echo ""
 echo "Instancia eliminada"
