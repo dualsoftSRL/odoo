@@ -1,142 +1,259 @@
 #!/bin/bash
 
-set -e
-
-echo "================================="
-echo " ODOO SERVER INSTALLER"
-echo "================================="
-
 OS=$(uname)
 
-install_manager() {
+if [ "$OS" = "Darwin" ]; then
+BASE_DIR="$HOME/odoo"
+else
+BASE_DIR="/opt"
+fi
 
-echo "Instalando Odoo Manager..."
+pause(){
+read -p "Presione ENTER para continuar..." </dev/tty
+}
 
-curl -fsSL https://raw.githubusercontent.com/dualsoftSRL/odoo/main/odoo-manager.sh \
--o /usr/local/bin/odoo-manager
+get_ip(){
 
-chmod +x /usr/local/bin/odoo-manager
+IP=$(curl -4 -s ifconfig.me 2>/dev/null)
 
-echo ""
-echo "Odoo Manager instalado"
-echo ""
-echo "Ejecute:"
-echo ""
-echo "odoo-manager"
-echo ""
+if [ -z "$IP" ]; then
+IP=$(hostname -I | awk '{print $1}')
+fi
+
+echo $IP
 
 }
 
-install_linux() {
+get_instances(){
 
-echo "Sistema detectado: Linux"
-
-echo "Actualizando repositorios..."
-
-apt update -y
-
-echo "Verificando Docker..."
-
-if command -v docker >/dev/null 2>&1
-then
-    echo "Docker ya instalado"
-else
-
-echo "Instalando Docker..."
-
-apt install -y ca-certificates curl gnupg
-
-install -m 0755 -d /etc/apt/keyrings
-
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-| tee /etc/apt/keyrings/docker.asc > /dev/null
-
-chmod a+r /etc/apt/keyrings/docker.asc
-
-echo \
-"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
-$(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
-| tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-apt update -y
-
-apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
-systemctl enable docker
-systemctl start docker
-
-fi
-
-echo "Verificando Watchtower..."
-
-if ! docker ps -a | grep -q watchtower; then
-
-docker run -d \
---name watchtower \
---restart always \
--v /var/run/docker.sock:/var/run/docker.sock \
-containrrr/watchtower \
---cleanup --interval 86400
-
-echo "Watchtower instalado"
-
-else
-
-echo "Watchtower ya existe"
-
-fi
-
-install_manager
+docker ps --format "{{.Names}}" | grep -E "_odoo|_app" | sed 's/_odoo//g' | sed 's/_app//g' | sort -u
 
 }
 
-install_mac() {
+get_odoo_port(){
 
-echo "Sistema detectado: macOS"
+NAME=$1
 
-if ! command -v docker >/dev/null 2>&1
-then
-
-echo ""
-echo "Docker no está instalado."
-echo ""
-echo "Instale Docker Desktop primero:"
-echo ""
-echo "https://www.docker.com/products/docker-desktop/"
-echo ""
-exit 1
-
-fi
-
-echo "Docker encontrado"
-
-install_manager
+docker ps --format "{{.Names}} {{.Ports}}" \
+| grep "$NAME" \
+| grep -oE "0.0.0.0:[0-9]+" \
+| head -1 \
+| cut -d: -f2
 
 }
 
-# Detectar sistema
+list_instances(){
 
-if [ "$OS" = "Linux" ]; then
+IP=$(get_ip)
 
-install_linux
+echo ""
+echo "Instancias instaladas:"
+echo ""
 
-elif [ "$OS" = "Darwin" ]; then
+INSTANCES=$(get_instances)
 
-install_mac
+for NAME in $INSTANCES
+do
 
-else
+PORT=$(get_odoo_port $NAME)
 
-echo "Sistema no soportado: $OS"
-exit 1
+echo "$NAME  →  http://$IP:$PORT"
+
+done
+
+echo ""
+pause
+
+}
+
+port_available(){
+
+PORT=8070
+
+while lsof -i :$PORT >/dev/null 2>&1
+do
+PORT=$((PORT+1))
+done
+
+echo $PORT
+
+}
+
+create_instance(){
+
+echo ""
+read -p "Nombre de la nueva instancia: " NAME </dev/tty
+
+DIR="$BASE_DIR/$NAME"
+
+if [ -d "$DIR" ]; then
+
+echo ""
+echo "ERROR: ya existe una instancia con ese nombre"
+pause
+return
 
 fi
 
+PORT=$(port_available)
+
+LONGPOLL=$((PORT+1))
+NGINX=$((PORT+10))
+
+mkdir -p $DIR/addons/desarrollado
+mkdir -p $DIR/addons/enterprise
+mkdir -p $DIR/addons/terceros
+mkdir -p $DIR/config
+mkdir -p $DIR/nginx
+mkdir -p $DIR/backups
+
+cd $DIR
+
+cat <<EOF > docker-compose.yml
+version: "3.9"
+
+services:
+
+  db:
+    image: postgres:16
+    container_name: ${NAME}_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: odoo
+      POSTGRES_PASSWORD: odoo
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  odoo:
+    image: odoo:18
+    container_name: ${NAME}_odoo
+    restart: always
+    depends_on:
+      - db
+    ports:
+      - "$PORT:8069"
+      - "$LONGPOLL:8072"
+    volumes:
+      - odoo_data:/var/lib/odoo
+      - ./addons/desarrollado:/mnt/desarrollado
+      - ./addons/enterprise:/mnt/enterprise
+      - ./addons/terceros:/mnt/terceros
+
+  nginx:
+    image: nginx:latest
+    container_name: ${NAME}_nginx
+    restart: always
+    depends_on:
+      - odoo
+    ports:
+      - "$NGINX:80"
+    volumes:
+      - ./nginx:/etc/nginx/conf.d
+
+volumes:
+  postgres_data:
+  odoo_data
+EOF
+
+docker compose up -d
+
+IP=$(get_ip)
+
 echo ""
+echo "Instancia creada correctamente"
+echo ""
+echo "Acceso:"
+echo "http://$IP:$PORT"
+echo ""
+
+pause
+
+}
+
+delete_instance(){
+
+echo ""
+echo "Seleccione instancia a borrar:"
+echo ""
+
+INSTANCES=$(get_instances)
+
+select NAME in $INSTANCES
+do
+
+if [ -z "$NAME" ]; then
+echo "Opción inválida"
+return
+fi
+
+read -p "CONFIRMAR borrar $NAME (si/no): " CONF </dev/tty
+
+if [ "$CONF" != "si" ]; then
+return
+fi
+
+docker stop ${NAME}_odoo ${NAME}_app ${NAME}_nginx ${NAME}_postgres 2>/dev/null
+docker rm ${NAME}_odoo ${NAME}_app ${NAME}_nginx ${NAME}_postgres 2>/dev/null
+
+DIR="$BASE_DIR/$NAME"
+
+if [ -d "$DIR" ]; then
+rm -rf $DIR
+fi
+
+echo ""
+echo "Instancia eliminada"
+echo ""
+
+pause
+break
+
+done
+
+}
+
+while true
+do
+
+clear
+
 echo "================================="
-echo " INSTALACIÓN COMPLETA"
+echo "      ODOO SERVER MANAGER"
 echo "================================="
 echo ""
-echo "Para iniciar el gestor:"
+echo "1) Listar instancias"
+echo "2) Crear nueva instancia"
+echo "3) Borrar instancia"
+echo "0) Salir"
 echo ""
-echo "odoo-manager"
+
+read -p "Seleccione opción: " OPTION </dev/tty
+
+case "$OPTION" in
+
+1)
+list_instances
+;;
+
+2)
+create_instance
+;;
+
+3)
+delete_instance
+;;
+
+0)
+exit
+;;
+
+*)
 echo ""
+echo "Opción inválida"
+sleep 1
+;;
+
+esac
+
+done
