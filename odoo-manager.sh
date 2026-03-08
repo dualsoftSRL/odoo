@@ -26,15 +26,15 @@ echo ""
 echo "Instancias instaladas:"
 echo ""
 
-for DIR in /opt/odoo-*; do
+docker ps --format "{{.Names}} {{.Ports}}" | grep odoo | while read line; do
 
-[ -d "$DIR" ] || continue
+NAME=$(echo $line | awk '{print $1}' | sed 's/_odoo//g' | sed 's/_app//g')
 
-NAME=$(basename "$DIR" | sed 's/odoo-//')
+PORT=$(echo $line | grep -oE '0.0.0.0:[0-9]+' | head -1 | cut -d: -f2)
 
-PORT=$(grep '"[0-9]*:8069"' $DIR/docker-compose.yml 2>/dev/null | head -1 | sed 's/"//g' | cut -d: -f1)
-
+if [ ! -z "$PORT" ]; then
 echo "$NAME  →  http://$IP:$PORT"
+fi
 
 done
 
