@@ -18,22 +18,26 @@ curl -fsSL https://raw.githubusercontent.com/dualsoftSRL/odoo/main/odoo-manager.
 chmod +x /usr/local/bin/odoo-manager
 
 echo ""
-echo "Instalación completada"
+echo "================================="
+echo " INSTALACIÓN COMPLETA"
+echo "================================="
 echo ""
 echo "Ejecute:"
 echo ""
 echo "odoo-manager"
 echo ""
-
 }
 
-if [ "$OS" = "Linux" ]; then
+install_linux() {
 
-echo "Sistema Linux detectado"
+echo "Sistema detectado: Linux"
 
+echo "Actualizando repositorios..."
 apt update -y
 
 if ! command -v docker >/dev/null 2>&1; then
+
+echo "Instalando Docker..."
 
 apt install -y ca-certificates curl gnupg
 
@@ -56,12 +60,48 @@ apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker
 systemctl enable docker
 systemctl start docker
 
+else
+
+echo "Docker ya está instalado"
+
 fi
 
 install_manager
+}
+
+install_mac() {
+
+echo "Sistema detectado: macOS"
+
+if ! command -v docker >/dev/null 2>&1; then
+
+echo ""
+echo "Debe instalar Docker Desktop primero:"
+echo "https://www.docker.com/products/docker-desktop/"
+echo ""
+exit 1
+
+fi
+
+install_manager
+}
+
+# Detectar sistema
+
+if [ "$OS" = "Linux" ]; then
+
+install_linux
 
 elif [ "$OS" = "Darwin" ]; then
 
+install_mac
+
+else
+
+echo "Sistema operativo no soportado: $OS"
+exit 1
+
+fi
 echo "Sistema macOS detectado"
 
 if ! command -v docker >/dev/null 2>&1; then
