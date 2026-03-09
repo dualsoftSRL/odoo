@@ -8,6 +8,8 @@ else
 BASE_DIR="/opt"
 fi
 
+ADDONS_REPO="https://github.com/dualsoftSRL/dualsoft-odoo-addons.git"
+
 pause(){
 read -p "Presione ENTER para continuar..." </dev/tty
 }
@@ -100,12 +102,14 @@ PORT=$(port_available)
 LONGPOLL=$((PORT+1))
 NGINX=$((PORT+10))
 
-mkdir -p $DIR/addons/desarrollado
-mkdir -p $DIR/addons/enterprise
-mkdir -p $DIR/addons/terceros
+mkdir -p $DIR/addons
 mkdir -p $DIR/config
 mkdir -p $DIR/nginx
 mkdir -p $DIR/backups
+
+echo ""
+echo "Descargando addons base..."
+git clone $ADDONS_REPO $DIR/addons
 
 cd $DIR
 
@@ -136,9 +140,7 @@ services:
       - "$LONGPOLL:8072"
     volumes:
       - odoo_data:/var/lib/odoo
-      - ./addons/desarrollado:/mnt/desarrollado
-      - ./addons/enterprise:/mnt/enterprise
-      - ./addons/terceros:/mnt/terceros
+      - ./addons:/mnt/addons
 
   nginx:
     image: nginx:latest
@@ -213,6 +215,52 @@ done
 
 }
 
+update_addons(){
+
+echo ""
+echo "Seleccione instancia para actualizar addons:"
+echo ""
+
+INSTANCES=$(get_instances)
+
+select NAME in $INSTANCES
+do
+
+if [ -z "$NAME" ]; then
+echo "Opción inválida"
+return
+fi
+
+DIR="$BASE_DIR/$NAME/addons"
+
+if [ ! -d "$DIR" ]; then
+
+echo ""
+echo "La instancia no tiene carpeta addons"
+pause
+return
+
+fi
+
+echo ""
+echo "Actualizando addons en $NAME..."
+echo ""
+
+cd $DIR
+
+git pull $ADDONS_REPO
+
+echo ""
+echo "Addons actualizados correctamente"
+echo ""
+
+pause
+break
+
+done
+
+}
+
 while true
 do
 
@@ -225,6 +273,7 @@ echo ""
 echo "1) Listar instancias"
 echo "2) Crear nueva instancia"
 echo "3) Borrar instancia"
+echo "4) Actualizar addons"
 echo "0) Salir"
 echo ""
 
@@ -242,6 +291,10 @@ create_instance
 
 3)
 delete_instance
+;;
+
+4)
+update_addons
 ;;
 
 0)
