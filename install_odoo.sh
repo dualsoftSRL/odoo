@@ -1,67 +1,88 @@
 #!/bin/bash
 
+set -e
+
+echo "================================="
+echo " ODOO SERVER INSTALLER"
+echo "================================="
+
 OS=$(uname)
 
-if [ "$OS" = "Darwin" ]; then
-BASE_DIR="$HOME/odoo"
+install_manager() {
+
+echo "Instalando Odoo Manager..."
+
+curl -fsSL https://raw.githubusercontent.com/dualsoftSRL/odoo/main/odoo-manager.sh \
+-o /usr/local/bin/odoo-manager
+
+chmod +x /usr/local/bin/odoo-manager
+
+echo ""
+echo "Instalación completada"
+echo ""
+echo "Ejecute:"
+echo ""
+echo "odoo-manager"
+echo ""
+
+}
+
+if [ "$OS" = "Linux" ]; then
+
+echo "Sistema Linux detectado"
+
+apt update -y
+
+if ! command -v docker >/dev/null 2>&1; then
+
+apt install -y ca-certificates curl gnupg
+
+install -m 0755 -d /etc/apt/keyrings
+
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+| tee /etc/apt/keyrings/docker.asc > /dev/null
+
+chmod a+r /etc/apt/keyrings/docker.asc
+
+echo \
+"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+$(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+| tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+apt update -y
+
+apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+systemctl enable docker
+systemctl start docker
+
+fi
+
+install_manager
+
+elif [ "$OS" = "Darwin" ]; then
+
+echo "Sistema macOS detectado"
+
+if ! command -v docker >/dev/null 2>&1; then
+
+echo ""
+echo "Debe instalar Docker Desktop primero:"
+echo "https://www.docker.com/products/docker-desktop/"
+echo ""
+
+exit 1
+
+fi
+
+install_manager
+
 else
-BASE_DIR="/opt"
-fi
 
-ADDONS_REPO="https://github.com/dualsoftSRL/dualsoft-odoo-addons.git"
+echo "Sistema no soportado"
+exit 1
 
-pause(){
-read -p "Presione ENTER para continuar..." </dev/tty
-}
-
-get_ip(){
-
-IP=$(curl -4 -s ifconfig.me 2>/dev/null)
-
-if [ -z "$IP" ]; then
-IP=$(hostname -I | awk '{print $1}')
-fi
-
-echo $IP
-
-}
-
-get_instances(){
-
-docker ps --format "{{.Names}}" | grep -E "_odoo|_app" | sed 's/_odoo//g' | sed 's/_app//g' | sort -u
-
-}
-
-get_odoo_port(){
-
-NAME=$1
-
-docker ps --format "{{.Names}} {{.Ports}}" \
-| grep "$NAME" \
-| grep -oE "0.0.0.0:[0-9]+" \
-| head -1 \
-| cut -d: -f2
-
-}
-
-list_instances(){
-
-IP=$(get_ip)
-
-echo ""
-echo "Instancias instaladas:"
-echo ""
-
-INSTANCES=$(get_instances)
-
-for NAME in $INSTANCES
-do
-
-PORT=$(get_odoo_port $NAME)
-
-echo "$NAME  →  http://$IP:$PORT"
-
-done
+fidone
 
 echo ""
 pause
